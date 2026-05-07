@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plane, Calendar, Wallet, Heart, Users, Package, NotebookPen, Plus, Trash2, Check, X, MapPin, Loader2, Camera, Settings, Image as ImageIcon, ExternalLink, Globe, Home } from 'lucide-react';
+import { Plane, Calendar, Wallet, Heart, Users, Package, NotebookPen, Plus, Trash2, Check, X, MapPin, Loader2, Camera, Settings, Image as ImageIcon, ExternalLink, Globe, Home, CalendarDays, CloudSun, Navigation, Info } from 'lucide-react';
 import { loadAllData, subscribeToData, saveKey } from './firebase';
 
 const DEFAULT_FAMILIES = [
@@ -10,11 +10,23 @@ const DEFAULT_FAMILIES = [
 
 const FAMILY_COLORS = ['#C8553D', '#2E5266', '#D4A24C', '#6B7F5C', '#8B5A8C', '#B5651D', '#3D6B7A', '#A0522D'];
 
+// November 2026 weather almanac, sourced from historical climate averages
+const WEATHER_DATA = {
+  Casablanca: { highF: 71, lowF: 55, highC: 22, lowC: 13, rainDays: 9, rainIn: 2.4, sunset: '5:35 PM', notes: 'Coastal, breezy, occasional rain. Layers help.' },
+  Fes: { highF: 67, lowF: 47, highC: 19, lowC: 8, rainDays: 7, rainIn: 1.7, sunset: '5:25 PM', notes: 'Cool nights in the medina. Bring a warm layer.' },
+  Marrakech: { highF: 72, lowF: 49, highC: 22, lowC: 9, rainDays: 7, rainIn: 1.6, sunset: '5:40 PM', notes: 'Warm days, cold nights. Big day-night swing.' },
+  Lisbon: { highF: 64, lowF: 53, highC: 18, lowC: 12, rainDays: 13, rainIn: 3.3, sunset: '5:20 PM', notes: 'Wettest month. Pack a real rain jacket.' },
+  Sintra: { highF: 61, lowF: 50, highC: 16, lowC: 10, rainDays: 14, rainIn: 4.5, sunset: '5:20 PM', notes: 'Microclimate. Cooler and wetter than Lisbon, often misty.' },
+  Porto: { highF: 61, lowF: 49, highC: 16, lowC: 9, rainDays: 14, rainIn: 5.2, sunset: '5:20 PM', notes: 'Rainy and cool. A waterproof jacket is essential.' },
+};
+
 const SHARED_TABS = [
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'itinerary', label: 'Shared Itinerary', icon: Calendar },
   { id: 'expenses', label: 'Shared Expenses', icon: Wallet },
   { id: 'meetups', label: 'Meetups', icon: Users },
   { id: 'wishlist', label: 'Wishlist', icon: Heart },
+  { id: 'weather', label: 'Weather', icon: CloudSun },
   { id: 'photos', label: 'Photos', icon: Camera },
   { id: 'packing', label: 'Packing', icon: Package },
   { id: 'notes', label: 'Notes', icon: NotebookPen },
@@ -30,8 +42,6 @@ const FAMILY_TABS = [
 
 const TRIP_START = new Date('2026-11-05T00:00:00');
 
-// ============ DATA STORE ============
-// Holds all trip data in memory, synced with Firebase in real-time.
 let dataStore = {};
 const dataListeners = new Set();
 
@@ -57,15 +67,47 @@ function updateKey(key, value) {
   saveKey(key, value);
 }
 
-// ============ APP ============
+// Helper: open address in user's default map app
+function openInMaps(address) {
+  if (!address) return;
+  const encoded = encodeURIComponent(address);
+  // Universal maps URL works on iOS (opens Apple Maps) and Android/desktop (opens Google Maps)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const url = isIOS
+    ? `https://maps.apple.com/?q=${encoded}`
+    : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+  window.open(url, '_blank');
+}
+
+// Helper: format date string (YYYY-MM-DD) for display
+function formatDate(isoDate) {
+  if (!isoDate) return '';
+  const [year, month, day] = isoDate.split('-');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[parseInt(month) - 1]} ${parseInt(day)}`;
+}
+
+// Helper: get all dates between two ISO dates inclusive
+function datesBetween(startISO, endISO) {
+  if (!startISO || !endISO) return [];
+  const start = new Date(startISO + 'T00:00:00');
+  const end = new Date(endISO + 'T00:00:00');
+  const dates = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    dates.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
 export default function App() {
   const [view, setView] = useState({ scope: 'shared', familyId: null });
-  const [activeTab, setActiveTab] = useState('itinerary');
+  const [activeTab, setActiveTab] = useState('calendar');
   const [showSettings, setShowSettings] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    // Initial load + subscribe to real-time updates
     loadAllData().then(data => {
       dataStore = data;
       notifyListeners();
@@ -120,12 +162,20 @@ export default function App() {
           border-color: #1F3A3D;
           box-shadow: 0 0 0 2px rgba(31, 58, 61, 0.15);
         }
+        input[type="date"] { color-scheme: light; }
         .btn-primary { background: #1F3A3D; color: #F5EDE0; transition: all 0.2s; }
         .btn-primary:hover { background: #142628; }
         .btn-ghost { background: transparent; color: #1F3A3D; border: 1px solid #1F3A3D; }
         .btn-ghost:hover { background: #1F3A3D; color: #F5EDE0; }
         .scrollbar-thin::-webkit-scrollbar { height: 6px; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #D6C5A8; border-radius: 3px; }
+        .map-link {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 11px; color: #1F3A3D; cursor: pointer;
+          padding: 2px 6px; border-radius: 6px;
+          background: rgba(31, 58, 61, 0.08); transition: all 0.15s;
+        }
+        .map-link:hover { background: rgba(31, 58, 61, 0.15); }
       `}</style>
 
       <Header onOpenSettings={() => setShowSettings(true)} view={view} setView={setView} />
@@ -153,10 +203,12 @@ export default function App() {
       <main className="px-6 py-8 max-w-6xl mx-auto">
         {view.scope === 'shared' && (
           <>
+            {activeTab === 'calendar' && <CalendarTab />}
             {activeTab === 'itinerary' && <SharedItineraryTab />}
             {activeTab === 'expenses' && <SharedExpensesTab />}
             {activeTab === 'meetups' && <MeetupsTab />}
             {activeTab === 'wishlist' && <WishlistTab />}
+            {activeTab === 'weather' && <WeatherTab />}
             {activeTab === 'photos' && <PhotosTab />}
             {activeTab === 'packing' && <SharedPackingTab />}
             {activeTab === 'notes' && <NotesTab scope="shared" />}
@@ -386,7 +438,204 @@ function FamilySettings({ onClose }) {
   );
 }
 
-// ============ SHARED ITINERARY ============
+// ============ CALENDAR (NEW) ============
+function CalendarTab() {
+  const families = useStoreKey('families', DEFAULT_FAMILIES);
+  const sharedDays = useStoreKey('itinerary-shared', []);
+
+  // Pull each family's itinerary
+  const familyDaysMap = {};
+  families.forEach(f => {
+    familyDaysMap[f.id] = dataStore[`itinerary-${f.id}`] || [];
+  });
+
+  // Build a map: dateISO -> { familyId -> { city, country, isShared } }
+  const calendarMap = {};
+
+  families.forEach(f => {
+    (familyDaysMap[f.id] || []).forEach(day => {
+      const dates = day.checkIn && day.checkOut
+        ? datesBetween(day.checkIn, day.checkOut)
+        : day.date
+          ? [day.date]
+          : [];
+      dates.forEach(d => {
+        if (!calendarMap[d]) calendarMap[d] = {};
+        calendarMap[d][f.id] = { city: day.city, country: day.country, isShared: false };
+      });
+    });
+  });
+
+  sharedDays.forEach(day => {
+    const dates = day.checkIn && day.checkOut
+      ? datesBetween(day.checkIn, day.checkOut)
+      : day.date
+        ? [day.date]
+        : [];
+    dates.forEach(d => {
+      if (!calendarMap[d]) calendarMap[d] = {};
+      day.families.forEach(famId => {
+        calendarMap[d][famId] = { city: day.city, country: day.country, isShared: true };
+      });
+    });
+  });
+
+  // Build the November 2026 calendar (30 days)
+  const monthDates = [];
+  for (let i = 1; i <= 30; i++) {
+    const dateStr = `2026-11-${String(i).padStart(2, '0')}`;
+    monthDates.push(dateStr);
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="Calendar" subtitle="Who's where, day by day. November 2026." />
+
+      <div className="card card-elevated rounded-2xl p-4 overflow-x-auto">
+        <div className="min-w-[700px]">
+          {/* Header row with days */}
+          <div className="grid gap-px mb-2" style={{ gridTemplateColumns: `120px repeat(30, minmax(28px, 1fr))` }}>
+            <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Family</div>
+            {monthDates.map(d => {
+              const dayNum = parseInt(d.split('-')[2]);
+              const date = new Date(d + 'T00:00:00');
+              const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][date.getDay()];
+              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+              return (
+                <div key={d} className="text-center body-font" style={{ color: isWeekend ? '#C8553D' : '#7A6B58' }}>
+                  <div className="text-[10px] uppercase">{dow}</div>
+                  <div className="text-xs font-medium">{dayNum}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Family rows */}
+          {families.map(f => (
+            <div key={f.id} className="grid gap-px py-2 items-center" style={{ gridTemplateColumns: `120px repeat(30, minmax(28px, 1fr))` }}>
+              <div className="flex items-center gap-2 body-font text-sm">
+                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: f.color }} />
+                <span style={{ color: '#2A2018' }}>{f.label}</span>
+              </div>
+              {monthDates.map(d => {
+                const entry = calendarMap[d]?.[f.id];
+                if (!entry) {
+                  return <div key={d} className="h-7 rounded" style={{ background: '#F5EDE0' }} />;
+                }
+                return (
+                  <div
+                    key={d}
+                    className="h-7 rounded flex items-center justify-center body-font text-[9px] cursor-help"
+                    style={{
+                      background: f.color,
+                      color: '#FBF6EC',
+                      border: entry.isShared ? '2px solid #1F3A3D' : 'none'
+                    }}
+                    title={`${entry.city || entry.country} (${entry.isShared ? 'shared day' : 'family-only'})`}
+                  >
+                    {entry.city ? entry.city.slice(0, 3).toUpperCase() : ''}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="card rounded-xl p-4">
+        <div className="body-font text-xs uppercase tracking-wider mb-2" style={{ color: '#7A6B58' }}>How to read this</div>
+        <ul className="body-font text-xs space-y-1.5" style={{ color: '#2A2018' }}>
+          <li className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded" style={{ background: '#C8553D' }} />
+            <span>Solid color = that family is in that city on that day (from their family itinerary)</span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded" style={{ background: '#C8553D', border: '2px solid #1F3A3D' }} />
+            <span>Dark border = it's a shared day (from Shared Itinerary, multiple families together)</span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded" style={{ background: '#F5EDE0', border: '1px solid #E0D2BC' }} />
+            <span>Empty = no plan recorded for that family that day</span>
+          </li>
+          <li className="pt-1" style={{ color: '#5C4F3D' }}>
+            Hover any cell for the city name and whether it's a shared or family-only day. Add check-in / check-out dates to your itinerary days for the bands to span multiple days automatically.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ============ WEATHER (NEW) ============
+function WeatherTab() {
+  const cities = Object.keys(WEATHER_DATA);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="November Weather" subtitle="Historical averages for November. Real forecasts available about a week out from your travel dates." />
+
+      <div className="card card-elevated rounded-2xl p-4" style={{ background: '#1F3A3D08', border: '1px solid #1F3A3D20' }}>
+        <div className="flex items-start gap-3">
+          <Info size={18} style={{ color: '#1F3A3D', flexShrink: 0, marginTop: 2 }} />
+          <div className="body-font text-xs leading-relaxed" style={{ color: '#2A2018' }}>
+            <strong>Quick read:</strong> Morocco runs warm by day (60s–70s F) and chilly at night (high 40s–50s F). Marrakech has the biggest day-night swing. Portugal is mild and rainy — Lisbon and Sintra get the most rain of the year in November. Pack layers and a real waterproof jacket.
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {cities.map(city => {
+          const w = WEATHER_DATA[city];
+          return (
+            <div key={city} className="card card-elevated rounded-2xl p-5">
+              <div className="flex items-baseline justify-between mb-3">
+                <h3 className="display-font text-2xl" style={{ color: '#1F3A3D' }}>{city}</h3>
+                <CloudSun size={20} style={{ color: '#D4A24C' }} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>High</div>
+                  <div className="display-font text-2xl" style={{ color: '#C8553D' }}>{w.highF}°F</div>
+                  <div className="body-font text-xs" style={{ color: '#5C4F3D' }}>{w.highC}°C</div>
+                </div>
+                <div>
+                  <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Low</div>
+                  <div className="display-font text-2xl" style={{ color: '#2E5266' }}>{w.lowF}°F</div>
+                  <div className="body-font text-xs" style={{ color: '#5C4F3D' }}>{w.lowC}°C</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t" style={{ borderColor: '#E0D2BC' }}>
+                <div>
+                  <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Rain</div>
+                  <div className="body-font text-sm" style={{ color: '#2A2018' }}>{w.rainDays} days · {w.rainIn}"</div>
+                </div>
+                <div>
+                  <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Sunset</div>
+                  <div className="body-font text-sm" style={{ color: '#2A2018' }}>{w.sunset}</div>
+                </div>
+              </div>
+
+              {w.notes && (
+                <p className="body-font text-xs mt-3 pt-3 border-t italic" style={{ color: '#5C4F3D', borderColor: '#E0D2BC' }}>
+                  {w.notes}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="body-font text-xs text-center pt-2" style={{ color: '#7A6B58' }}>
+        Source: 30-year climate averages. Actual conditions vary year to year.
+      </div>
+    </div>
+  );
+}
+
+// ============ ITINERARY ============
 function SharedItineraryTab() {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
   const days = useStoreKey('itinerary-shared', getDefaultSharedItinerary(families));
@@ -396,8 +645,8 @@ function SharedItineraryTab() {
 
   const addDay = () => {
     const next = [...days, {
-      id: Date.now().toString(), date: '', city: '', country: 'Morocco',
-      activities: '', lodging: '', families: families.map(f => f.id),
+      id: Date.now().toString(), date: '', checkIn: '', checkOut: '', city: '', country: 'Morocco',
+      activities: '', lodging: '', address: '', families: families.map(f => f.id),
     }];
     persist(next);
     setEditingId(next[next.length - 1].id);
@@ -414,7 +663,7 @@ function SharedItineraryTab() {
 
   return (
     <div className="space-y-3">
-      <SectionHeader title="Shared Itinerary" subtitle="Days when two or more families overlap." />
+      <SectionHeader title="Shared Itinerary" subtitle="Days when two or more families overlap. Add check-in / check-out for multi-day stays." />
 
       {days.map((day, idx) => (
         <div key={day.id} className="card card-elevated rounded-2xl p-5">
@@ -443,9 +692,9 @@ function SharedItineraryTab() {
 function getDefaultSharedItinerary(families) {
   const allIds = families.map(f => f.id);
   return [
-    { id: '1', date: 'Nov 5', city: 'Casablanca', country: 'Morocco', activities: 'Welcome dinner, all families', lodging: '', families: allIds },
-    { id: '2', date: 'Nov 9', city: 'Marrakech', country: 'Morocco', activities: 'Group souk walk + Jemaa el-Fna at dusk', lodging: '', families: allIds },
-    { id: '3', date: 'Nov 13', city: 'Lisbon', country: 'Portugal', activities: 'Group dinner in Alfama', lodging: '', families: allIds },
+    { id: '1', date: '', checkIn: '2026-11-05', checkOut: '2026-11-06', city: 'Casablanca', country: 'Morocco', activities: 'Welcome dinner, all families', lodging: '', address: '', families: allIds },
+    { id: '2', date: '', checkIn: '2026-11-09', checkOut: '2026-11-12', city: 'Marrakech', country: 'Morocco', activities: 'Group souk walk + Jemaa el-Fna at dusk', lodging: '', address: '', families: allIds },
+    { id: '3', date: '', checkIn: '2026-11-13', checkOut: '2026-11-15', city: 'Lisbon', country: 'Portugal', activities: 'Group dinner in Alfama', lodging: '', address: '', families: allIds },
   ];
 }
 
@@ -458,7 +707,7 @@ function FamilyItineraryTab({ familyId }) {
   const persist = (next) => updateKey(`itinerary-${familyId}`, next);
 
   const addDay = () => {
-    const next = [...days, { id: Date.now().toString(), date: '', city: '', country: 'Morocco', activities: '', lodging: '' }];
+    const next = [...days, { id: Date.now().toString(), date: '', checkIn: '', checkOut: '', city: '', country: 'Morocco', activities: '', lodging: '', address: '' }];
     persist(next);
     setEditingId(next[next.length - 1].id);
   };
@@ -470,7 +719,7 @@ function FamilyItineraryTab({ familyId }) {
 
   return (
     <div className="space-y-3">
-      <SectionHeader title={`${family.label} Itinerary`} subtitle="Your family's full day-by-day." color={family.color} />
+      <SectionHeader title={`${family.label} Itinerary`} subtitle="Your family's full day-by-day. Add check-in / check-out for hotel stays." color={family.color} />
 
       {days.length === 0 && (
         <div className="card rounded-2xl p-8 text-center body-font text-sm" style={{ color: '#7A6B58' }}>
@@ -505,17 +754,27 @@ function FamilyItineraryTab({ familyId }) {
 function DayEditor({ day, families, updateDay, toggleFamily, onDone, onDelete, hideFamilies }) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <input type="text" placeholder="Date" value={day.date} onChange={e => updateDay({ date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
-        <input type="text" placeholder="City" value={day.city} onChange={e => updateDay({ city: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
-        <select value={day.country} onChange={e => updateDay({ country: e.target.value })} className="px-3 py-2 rounded-lg text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div>
+          <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>Check-in</label>
+          <input type="date" value={day.checkIn || ''} onChange={e => updateDay({ checkIn: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+        </div>
+        <div>
+          <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>Check-out</label>
+          <input type="date" value={day.checkOut || ''} onChange={e => updateDay({ checkOut: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input type="text" placeholder="City" value={day.city || ''} onChange={e => updateDay({ city: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+        <select value={day.country || 'Morocco'} onChange={e => updateDay({ country: e.target.value })} className="px-3 py-2 rounded-lg text-sm">
           <option>Morocco</option>
           <option>Portugal</option>
           <option>Travel Day</option>
         </select>
       </div>
-      <textarea placeholder="Activities" value={day.activities} onChange={e => updateDay({ activities: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm resize-none" rows={2} />
-      <input type="text" placeholder="Lodging" value={day.lodging} onChange={e => updateDay({ lodging: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+      <textarea placeholder="Activities" value={day.activities || ''} onChange={e => updateDay({ activities: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm resize-none" rows={2} />
+      <input type="text" placeholder="Lodging name (e.g. Riad Yasmine)" value={day.lodging || ''} onChange={e => updateDay({ lodging: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+      <input type="text" placeholder="Full address (for map link)" value={day.address || ''} onChange={e => updateDay({ address: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
       {!hideFamilies && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
           <span className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Joining:</span>
@@ -539,15 +798,32 @@ function DayEditor({ day, families, updateDay, toggleFamily, onDone, onDelete, h
 }
 
 function DayDisplay({ day, families, onClick, hideFamilies }) {
+  const dateLabel = day.checkIn && day.checkOut
+    ? `${formatDate(day.checkIn)} – ${formatDate(day.checkOut)}`
+    : day.checkIn
+      ? formatDate(day.checkIn)
+      : day.date || 'Date';
+
   return (
     <div onClick={onClick} className="cursor-pointer">
       <div className="flex items-baseline gap-3 flex-wrap">
-        <span className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>{day.date || 'Date'}</span>
+        <span className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>{dateLabel}</span>
         <span className="display-font text-2xl" style={{ color: '#1F3A3D' }}>{day.city || 'Add city'}</span>
         <span className="body-font text-xs px-2 py-0.5 rounded-full" style={{ background: '#1F3A3D15', color: '#1F3A3D' }}>{day.country}</span>
       </div>
       {day.activities && <p className="body-font text-sm mt-1.5" style={{ color: '#2A2018' }}>{day.activities}</p>}
-      {day.lodging && <p className="body-font text-xs mt-1 flex items-center gap-1" style={{ color: '#5C4F3D' }}><MapPin size={11} /> {day.lodging}</p>}
+      {day.lodging && (
+        <div className="flex items-center gap-2 flex-wrap mt-1.5">
+          <p className="body-font text-xs flex items-center gap-1" style={{ color: '#5C4F3D' }}>
+            <MapPin size={11} /> {day.lodging}
+          </p>
+          {day.address && (
+            <button onClick={(e) => { e.stopPropagation(); openInMaps(day.address); }} className="map-link">
+              <Navigation size={10} /> Open in Maps
+            </button>
+          )}
+        </div>
+      )}
       {!hideFamilies && families && (
         <div className="flex gap-1 mt-2 flex-wrap">
           {families.filter(f => day.families.includes(f.id)).map(f => (
@@ -600,7 +876,7 @@ function FlightsTab({ familyId }) {
             <input type="text" placeholder="To (CMN)" value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input type="text" placeholder="Date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+            <input type="date" placeholder="Date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
             <input type="text" placeholder="Depart" value={form.departTime} onChange={e => setForm({ ...form, departTime: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
             <input type="text" placeholder="Arrive" value={form.arriveTime} onChange={e => setForm({ ...form, arriveTime: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
@@ -630,7 +906,7 @@ function FlightsTab({ familyId }) {
                 <strong>{f.airline}</strong> {f.flightNum && `· ${f.flightNum}`}
               </div>
               <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
-                {f.date && <span>{f.date}</span>}
+                {f.date && <span>{formatDate(f.date) || f.date}</span>}
                 {f.departTime && <span> · Depart {f.departTime}</span>}
                 {f.arriveTime && <span> · Arrive {f.arriveTime}</span>}
               </div>
@@ -680,7 +956,7 @@ function SharedExpensesTab() {
 
   return (
     <div className="space-y-5">
-      <SectionHeader title="Shared Expenses" subtitle="Costs split across multiple families. Auto-balanced." />
+      <SectionHeader title="Shared Expenses" subtitle="Costs split across multiple families. Pick who's in on each one." />
 
       <div className="card card-elevated rounded-2xl p-5">
         <h3 className="display-font text-xl mb-4" style={{ color: '#1F3A3D' }}>Where things stand</h3>
@@ -730,7 +1006,7 @@ function SharedExpensesTab() {
           <input type="text" placeholder="What was it?" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
           <div className="grid grid-cols-2 gap-2">
             <input type="number" placeholder="Amount (USD)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
-            <input type="text" placeholder="Date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
           <div>
             <div className="body-font text-xs uppercase tracking-wider mb-1.5" style={{ color: '#7A6B58' }}>Paid by</div>
@@ -743,7 +1019,7 @@ function SharedExpensesTab() {
             </div>
           </div>
           <div>
-            <div className="body-font text-xs uppercase tracking-wider mb-1.5" style={{ color: '#7A6B58' }}>Split among</div>
+            <div className="body-font text-xs uppercase tracking-wider mb-1.5" style={{ color: '#7A6B58' }}>Split among (tap to add or remove)</div>
             <div className="flex gap-2 flex-wrap">
               {families.map(f => (
                 <button key={f.id} onClick={() => toggleSplit(f.id)} className="px-3 py-1.5 rounded-full body-font text-xs transition-all" style={{ background: form.splitAmong.includes(f.id) ? f.color : 'transparent', color: form.splitAmong.includes(f.id) ? '#FBF6EC' : f.color, border: `1px solid ${f.color}` }}>
@@ -763,17 +1039,28 @@ function SharedExpensesTab() {
         {expenses.length === 0 && <div className="text-center py-12 body-font text-sm" style={{ color: '#7A6B58' }}>No shared expenses yet.</div>}
         {expenses.slice().reverse().map(exp => {
           const paidBy = families.find(f => f.id === exp.paidBy);
+          const splitFams = families.filter(f => exp.splitAmong.includes(f.id));
           return (
-            <div key={exp.id} className="card rounded-xl p-4 flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{exp.description}</div>
-                <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
-                  {exp.date && <span>{exp.date} · </span>}
-                  <span style={{ color: paidBy?.color || '#5C4F3D' }}>{paidBy?.label || 'Unknown'}</span> paid · split among {exp.splitAmong.length} {exp.splitAmong.length === 1 ? 'family' : 'families'}
+            <div key={exp.id} className="card rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{exp.description}</div>
+                  <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
+                    {exp.date && <span>{formatDate(exp.date) || exp.date} · </span>}
+                    <span style={{ color: paidBy?.color || '#5C4F3D' }}>{paidBy?.label || 'Unknown'}</span> paid
+                  </div>
+                  <div className="flex gap-1 mt-1.5 flex-wrap items-center">
+                    <span className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>Between:</span>
+                    {splitFams.map(f => (
+                      <span key={f.id} className="px-2 py-0.5 rounded-full body-font text-[10px]" style={{ background: `${f.color}15`, color: f.color, border: `1px solid ${f.color}40` }}>
+                        {f.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+                <div className="display-font text-xl whitespace-nowrap" style={{ color: '#1F3A3D' }}>${exp.amount.toFixed(2)}</div>
+                <button onClick={() => removeExpense(exp.id)} className="p-1.5 rounded-lg" style={{ color: '#C8553D' }}><Trash2 size={14} /></button>
               </div>
-              <div className="display-font text-xl whitespace-nowrap" style={{ color: '#1F3A3D' }}>${exp.amount.toFixed(2)}</div>
-              <button onClick={() => removeExpense(exp.id)} className="p-1.5 rounded-lg" style={{ color: '#C8553D' }}><Trash2 size={14} /></button>
             </div>
           );
         })}
@@ -859,7 +1146,7 @@ function FamilyExpensesTab({ familyId }) {
             <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="px-3 py-2 rounded-lg text-sm">
               <option>Food</option><option>Lodging</option><option>Transport</option><option>Activities</option><option>Shopping</option><option>Other</option>
             </select>
-            <input type="text" placeholder="Date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-lg body-font text-xs" style={{ color: '#5C4F3D' }}>Cancel</button>
@@ -876,7 +1163,7 @@ function FamilyExpensesTab({ familyId }) {
               <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{exp.description}</div>
               <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
                 <span style={{ color: family.color }}>{exp.category}</span>
-                {exp.date && <span> · {exp.date}</span>}
+                {exp.date && <span> · {formatDate(exp.date) || exp.date}</span>}
               </div>
             </div>
             <div className="display-font text-xl whitespace-nowrap" style={{ color: '#1F3A3D' }}>${exp.amount.toFixed(2)}</div>
@@ -892,14 +1179,14 @@ function FamilyExpensesTab({ familyId }) {
 function MeetupsTab() {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
   const meetups = useStoreKey('meetups', []);
-  const [form, setForm] = useState({ title: '', when: '', where: '', families: families.map(f => f.id), notes: '' });
+  const [form, setForm] = useState({ title: '', date: '', time: '', where: '', address: '', families: families.map(f => f.id), notes: '' });
 
   const persist = (next) => updateKey('meetups', next);
 
   const add = () => {
     if (!form.title) return;
     persist([...meetups, { ...form, id: Date.now().toString() }]);
-    setForm({ title: '', when: '', where: '', families: families.map(f => f.id), notes: '' });
+    setForm({ title: '', date: '', time: '', where: '', address: '', families: families.map(f => f.id), notes: '' });
   };
 
   const remove = (id) => persist(meetups.filter(m => m.id !== id));
@@ -912,9 +1199,11 @@ function MeetupsTab() {
       <div className="card card-elevated rounded-2xl p-5 space-y-2">
         <input type="text" placeholder="What's the meetup?" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
         <div className="grid grid-cols-2 gap-2">
-          <input type="text" placeholder="When" value={form.when} onChange={e => setForm({ ...form, when: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
-          <input type="text" placeholder="Where" value={form.where} onChange={e => setForm({ ...form, where: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+          <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+          <input type="text" placeholder="Time (e.g. 7pm)" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
         </div>
+        <input type="text" placeholder="Place name" value={form.where} onChange={e => setForm({ ...form, where: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+        <input type="text" placeholder="Full address (for map link)" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
         <textarea placeholder="Notes, reservation info..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm resize-none" rows={2} />
         <div>
           <div className="body-font text-xs uppercase tracking-wider mb-1.5" style={{ color: '#7A6B58' }}>Who's joining</div>
@@ -938,9 +1227,15 @@ function MeetupsTab() {
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{m.title}</div>
-                <div className="body-font text-xs mt-1 flex flex-wrap gap-x-3" style={{ color: '#5C4F3D' }}>
-                  {m.when && <span>{m.when}</span>}
+                <div className="body-font text-xs mt-1 flex flex-wrap gap-x-3 items-center" style={{ color: '#5C4F3D' }}>
+                  {m.date && <span>{formatDate(m.date) || m.date}</span>}
+                  {m.time && <span>{m.time}</span>}
                   {m.where && <span className="flex items-center gap-1"><MapPin size={11} /> {m.where}</span>}
+                  {m.address && (
+                    <button onClick={() => openInMaps(m.address)} className="map-link">
+                      <Navigation size={10} /> Open in Maps
+                    </button>
+                  )}
                 </div>
                 {m.notes && <p className="body-font text-sm mt-2" style={{ color: '#2A2018' }}>{m.notes}</p>}
                 <div className="flex gap-1 mt-2.5 flex-wrap">
@@ -985,7 +1280,7 @@ function WishlistTab() {
       <div className="card card-elevated rounded-2xl p-5 space-y-2">
         <input type="text" placeholder="Add a place, activity, or restaurant..." value={newItem.title} onChange={e => setNewItem({ ...newItem, title: e.target.value })} onKeyDown={e => e.key === 'Enter' && add()} className="w-full px-3 py-2 rounded-lg text-sm" />
         <div className="grid grid-cols-2 gap-2">
-          <input type="text" placeholder="Location" value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+          <input type="text" placeholder="Location (city or address)" value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           <select value={newItem.addedBy} onChange={e => setNewItem({ ...newItem, addedBy: e.target.value })} className="px-3 py-2 rounded-lg text-sm">
             {families.map(f => <option key={f.id} value={f.id}>Added by {f.label}</option>)}
           </select>
@@ -1005,9 +1300,14 @@ function WishlistTab() {
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{item.title}</div>
-                  <div className="body-font text-xs mt-0.5" style={{ color: '#5C4F3D' }}>
-                    {item.location && <span>{item.location} · </span>}
-                    <span style={{ color: addedBy?.color }}>added by {addedBy?.label || '—'}</span>
+                  <div className="body-font text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: '#5C4F3D' }}>
+                    {item.location && <span>{item.location}</span>}
+                    {item.location && (
+                      <button onClick={() => openInMaps(item.location)} className="map-link">
+                        <Navigation size={10} /> Maps
+                      </button>
+                    )}
+                    <span style={{ color: addedBy?.color }}>· added by {addedBy?.label || '—'}</span>
                   </div>
                   {item.notes && <p className="body-font text-sm mt-2" style={{ color: '#2A2018' }}>{item.notes}</p>}
                 </div>
@@ -1040,6 +1340,7 @@ function PhotosTab() {
   const [form, setForm] = useState({ url: '', caption: '', addedBy: families[0]?.id || '', location: '' });
   const [albumForm, setAlbumForm] = useState({ name: '', url: '', addedBy: families[0]?.id || '' });
   const [showAlbumForm, setShowAlbumForm] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [lightbox, setLightbox] = useState(null);
 
   const persistPhotos = (next) => updateKey('photos', next);
@@ -1063,16 +1364,49 @@ function PhotosTab() {
 
   return (
     <div className="space-y-5">
-      <SectionHeader title="Photos" subtitle="Image URLs and album links from Google Photos, iCloud, Dropbox, anywhere." />
+      <SectionHeader title="Photos" subtitle="Share photo links from iCloud, Google Photos, or anywhere. Originals stay safe in your photo app." />
 
-      <div className="card card-elevated rounded-2xl p-4" style={{ background: '#1F3A3D08', border: '1px solid #1F3A3D20' }}>
-        <div className="flex items-start gap-3">
-          <ImageIcon size={18} style={{ color: '#1F3A3D', flexShrink: 0, marginTop: 2 }} />
-          <div className="body-font text-xs leading-relaxed" style={{ color: '#2A2018' }}>
-            <strong>How to share:</strong> Originals stay in your photo app. For full albums, paste the share link below. For single shots, paste the direct image URL.
+      <button onClick={() => setShowInstructions(!showInstructions)} className="card rounded-2xl p-4 w-full text-left transition-all" style={{ background: showInstructions ? '#1F3A3D08' : '#FBF6EC', border: `1px solid ${showInstructions ? '#1F3A3D40' : '#E0D2BC'}` }}>
+        <div className="flex items-center gap-2">
+          <Info size={16} style={{ color: '#1F3A3D' }} />
+          <span className="body-font text-sm font-medium" style={{ color: '#1F3A3D' }}>How to share photo links {showInstructions ? '(tap to hide)' : '(tap to expand)'}</span>
+        </div>
+      </button>
+
+      {showInstructions && (
+        <div className="card rounded-2xl p-5 space-y-4">
+          <div>
+            <h4 className="display-font text-lg mb-2" style={{ color: '#C8553D' }}>iPhone — iCloud Shared Album (best for groups)</h4>
+            <ol className="body-font text-sm space-y-1.5 list-decimal pl-5" style={{ color: '#2A2018' }}>
+              <li>Open Photos app → Albums tab → tap the <strong>+</strong> in the top left</li>
+              <li>Choose <strong>New Shared Album</strong>, name it (e.g., "Marrakech Day 3")</li>
+              <li>Add photos to it, then tap the album → People icon → <strong>Public Website: ON</strong></li>
+              <li>Copy the link that appears</li>
+              <li>Paste it below as an album link</li>
+            </ol>
+          </div>
+
+          <div className="pt-4 border-t" style={{ borderColor: '#E0D2BC' }}>
+            <h4 className="display-font text-lg mb-2" style={{ color: '#2E5266' }}>Android / Google Photos</h4>
+            <ol className="body-font text-sm space-y-1.5 list-decimal pl-5" style={{ color: '#2A2018' }}>
+              <li>Open Google Photos → Library → Albums → <strong>Create album</strong></li>
+              <li>Add your photos and name the album</li>
+              <li>Tap the album → Share icon → <strong>Create link</strong></li>
+              <li>Copy and paste the link below</li>
+            </ol>
+          </div>
+
+          <div className="pt-4 border-t" style={{ borderColor: '#E0D2BC' }}>
+            <h4 className="display-font text-lg mb-2" style={{ color: '#D4A24C' }}>Single photo (for the photo wall)</h4>
+            <p className="body-font text-sm" style={{ color: '#2A2018' }}>
+              You need a <strong>direct image URL</strong> ending in .jpg, .png, or .heic. The easiest source: post the photo to any image host (Imgur, your own website, a public Google Drive folder), then right-click and "Copy image address." Paste that into the photo wall below.
+            </p>
+            <p className="body-font text-xs mt-2 italic" style={{ color: '#5C4F3D' }}>
+              Note: iCloud and Google Photos links don't work in the photo wall (they're album viewers, not direct image links). Use those as albums instead.
+            </p>
           </div>
         </div>
-      </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -1123,7 +1457,7 @@ function PhotosTab() {
       <div>
         <h3 className="display-font text-xl mb-2" style={{ color: '#1F3A3D' }}>Photo wall</h3>
         <div className="card card-elevated rounded-2xl p-4 space-y-2 mb-3">
-          <input type="url" placeholder="Image URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+          <input type="url" placeholder="Direct image URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
           <input type="text" placeholder="Caption" value={form.caption} onChange={e => setForm({ ...form, caption: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
           <div className="grid grid-cols-2 gap-2">
             <input type="text" placeholder="Where" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
