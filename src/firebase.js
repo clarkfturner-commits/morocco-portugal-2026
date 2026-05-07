@@ -10,12 +10,12 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_YOUR_PROJECT_ID",
-  storageBucket: "PASTE_YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "PASTE_YOUR_SENDER_ID",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyBZK-rQ7PqQJrQi6_gFXV5_YZ7_pOgXwBI",
+  authDomain: "portugal---morocco.firebaseapp.com",
+  projectId: "portugal---morocco",
+  storageBucket: "portugal---morocco.firebasestorage.app",
+  messagingSenderId: "264069233376",
+  appId: "1:264069233376:web:baf6082c9ee2acaadf2e85"
 };
 
 const app = initializeApp(firebaseConfig);
