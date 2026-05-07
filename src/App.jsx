@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plane, Calendar, Wallet, Heart, Users, Package, NotebookPen, Plus, Trash2, Check, X, MapPin, Loader2, Camera, Settings, Image as ImageIcon, ExternalLink, Globe, Home, CalendarDays, CloudSun, Navigation, Info } from 'lucide-react';
+import { Plane, Calendar, Wallet, Heart, Users, Package, NotebookPen, Plus, Trash2, Check, X, MapPin, Loader2, Camera, Settings, Image as ImageIcon, ExternalLink, Globe, Home, CalendarDays, CloudSun, Navigation, Info, Sun, Clock, DollarSign, FileText, Phone, Briefcase, Sparkles, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { loadAllData, subscribeToData, saveKey } from './firebase';
 
 const DEFAULT_FAMILIES = [
@@ -10,7 +10,6 @@ const DEFAULT_FAMILIES = [
 
 const FAMILY_COLORS = ['#C8553D', '#2E5266', '#D4A24C', '#6B7F5C', '#8B5A8C', '#B5651D', '#3D6B7A', '#A0522D'];
 
-// November 2026 weather almanac, sourced from historical climate averages
 const WEATHER_DATA = {
   Casablanca: { highF: 71, lowF: 55, highC: 22, lowC: 13, rainDays: 9, rainIn: 2.4, sunset: '5:35 PM', notes: 'Coastal, breezy, occasional rain. Layers help.' },
   Fes: { highF: 67, lowF: 47, highC: 19, lowC: 8, rainDays: 7, rainIn: 1.7, sunset: '5:25 PM', notes: 'Cool nights in the medina. Bring a warm layer.' },
@@ -20,7 +19,17 @@ const WEATHER_DATA = {
   Porto: { highF: 61, lowF: 49, highC: 16, lowC: 9, rainDays: 14, rainIn: 5.2, sunset: '5:20 PM', notes: 'Rainy and cool. A waterproof jacket is essential.' },
 };
 
+const NOTE_TYPES = [
+  { id: 'general', label: 'General', icon: BookOpen, color: '#5C4F3D' },
+  { id: 'document', label: 'Document', icon: FileText, color: '#2E5266' },
+  { id: 'reservation', label: 'Reservation', icon: Sparkles, color: '#C8553D' },
+  { id: 'contact', label: 'Contact', icon: Phone, color: '#6B7F5C' },
+  { id: 'logistics', label: 'Logistics', icon: Briefcase, color: '#D4A24C' },
+  { id: 'tip', label: 'Local Tip', icon: Sun, color: '#8B5A8C' },
+];
+
 const SHARED_TABS = [
+  { id: 'today', label: 'Today', icon: Sun },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'itinerary', label: 'Shared Itinerary', icon: Calendar },
   { id: 'expenses', label: 'Shared Expenses', icon: Wallet },
@@ -67,11 +76,9 @@ function updateKey(key, value) {
   saveKey(key, value);
 }
 
-// Helper: open address in user's default map app
 function openInMaps(address) {
   if (!address) return;
   const encoded = encodeURIComponent(address);
-  // Universal maps URL works on iOS (opens Apple Maps) and Android/desktop (opens Google Maps)
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const url = isIOS
     ? `https://maps.apple.com/?q=${encoded}`
@@ -79,7 +86,6 @@ function openInMaps(address) {
   window.open(url, '_blank');
 }
 
-// Helper: format date string (YYYY-MM-DD) for display
 function formatDate(isoDate) {
   if (!isoDate) return '';
   const [year, month, day] = isoDate.split('-');
@@ -87,7 +93,6 @@ function formatDate(isoDate) {
   return `${months[parseInt(month) - 1]} ${parseInt(day)}`;
 }
 
-// Helper: get all dates between two ISO dates inclusive
 function datesBetween(startISO, endISO) {
   if (!startISO || !endISO) return [];
   const start = new Date(startISO + 'T00:00:00');
@@ -101,9 +106,14 @@ function datesBetween(startISO, endISO) {
   return dates;
 }
 
+function todayISO() {
+  const now = new Date();
+  return now.toISOString().split('T')[0];
+}
+
 export default function App() {
   const [view, setView] = useState({ scope: 'shared', familyId: null });
-  const [activeTab, setActiveTab] = useState('calendar');
+  const [activeTab, setActiveTab] = useState('today');
   const [showSettings, setShowSettings] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -174,6 +184,7 @@ export default function App() {
           font-size: 11px; color: #1F3A3D; cursor: pointer;
           padding: 2px 6px; border-radius: 6px;
           background: rgba(31, 58, 61, 0.08); transition: all 0.15s;
+          border: none;
         }
         .map-link:hover { background: rgba(31, 58, 61, 0.15); }
       `}</style>
@@ -203,6 +214,7 @@ export default function App() {
       <main className="px-6 py-8 max-w-6xl mx-auto">
         {view.scope === 'shared' && (
           <>
+            {activeTab === 'today' && <TodayTab />}
             {activeTab === 'calendar' && <CalendarTab />}
             {activeTab === 'itinerary' && <SharedItineraryTab />}
             {activeTab === 'expenses' && <SharedExpensesTab />}
@@ -234,16 +246,28 @@ export default function App() {
   );
 }
 
+// ============ HEADER (with time zone clocks) ============
 function Header({ onOpenSettings, view, setView }) {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
-  const [countdown, setCountdown] = useState(getCountdown());
+  const [now, setNow] = useState(new Date());
+  const countdown = getCountdown(now);
 
   useEffect(() => {
-    const id = setInterval(() => setCountdown(getCountdown()), 1000);
+    const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const activeFamily = view.scope === 'family' ? families.find(f => f.id === view.familyId) : null;
+
+  const timeIn = (timeZone) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone, hour: 'numeric', minute: '2-digit', hour12: true
+      }).format(now);
+    } catch {
+      return '—';
+    }
+  };
 
   return (
     <header className="px-6 pt-8 pb-6 border-b" style={{ borderColor: '#E0D2BC' }}>
@@ -288,7 +312,18 @@ function Header({ onOpenSettings, view, setView }) {
           </div>
         </div>
 
-        <div className="mt-6">
+        {/* Time zone strip */}
+        <div className="card rounded-xl mt-5 px-4 py-3 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Clock size={13} style={{ color: '#7A6B58' }} />
+            <span className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Now</span>
+          </div>
+          <TimeChip city="Los Angeles" time={timeIn('America/Los_Angeles')} />
+          <TimeChip city="Casablanca" time={timeIn('Africa/Casablanca')} />
+          <TimeChip city="Lisbon" time={timeIn('Europe/Lisbon')} />
+        </div>
+
+        <div className="mt-5">
           <div className="body-font text-xs uppercase tracking-wider mb-2" style={{ color: '#7A6B58' }}>Viewing as</div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -332,8 +367,16 @@ function Header({ onOpenSettings, view, setView }) {
   );
 }
 
-function getCountdown() {
-  const now = new Date();
+function TimeChip({ city, time }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="body-font text-xs" style={{ color: '#5C4F3D' }}>{city}</span>
+      <span className="display-font text-sm font-medium" style={{ color: '#1F3A3D' }}>{time}</span>
+    </div>
+  );
+}
+
+function getCountdown(now) {
   const diff = TRIP_START - now;
 
   if (diff <= 0) {
@@ -438,18 +481,192 @@ function FamilySettings({ onClose }) {
   );
 }
 
-// ============ CALENDAR (NEW) ============
+// ============ TODAY VIEW (NEW) ============
+function TodayTab() {
+  const families = useStoreKey('families', DEFAULT_FAMILIES);
+  const sharedDays = useStoreKey('itinerary-shared', []);
+  const meetups = useStoreKey('meetups', []);
+  const today = todayISO();
+
+  // Find today's plans across all sources
+  const todayShared = sharedDays.filter(d => {
+    if (d.checkIn && d.checkOut) {
+      return datesBetween(d.checkIn, d.checkOut).includes(today);
+    }
+    return d.date === today || d.checkIn === today;
+  });
+
+  const todayMeetups = meetups.filter(m => m.date === today);
+
+  // Each family's plans for today
+  const familyTodays = families.map(f => {
+    const familyDays = dataStore[`itinerary-${f.id}`] || [];
+    const todayDay = familyDays.find(d => {
+      if (d.checkIn && d.checkOut) {
+        return datesBetween(d.checkIn, d.checkOut).includes(today);
+      }
+      return d.date === today || d.checkIn === today;
+    });
+    return { family: f, day: todayDay };
+  });
+
+  // Days until / since trip start
+  const tripDate = TRIP_START;
+  const todayDate = new Date(today + 'T00:00:00');
+  const daysDiff = Math.round((todayDate - tripDate) / (1000 * 60 * 60 * 24));
+
+  const isOnTrip = daysDiff >= 0 && daysDiff <= 30;
+  const isPreTrip = daysDiff < 0;
+  const isPostTrip = daysDiff > 30;
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Today" subtitle={isOnTrip ? `Day ${daysDiff + 1} of the trip` : isPreTrip ? `${Math.abs(daysDiff)} days until takeoff` : 'Trip complete'} />
+
+      {isPreTrip && (
+        <div className="card card-elevated rounded-2xl p-6 text-center">
+          <Sun size={32} style={{ color: '#D4A24C' }} className="mx-auto mb-3" />
+          <h3 className="display-font text-2xl" style={{ color: '#1F3A3D' }}>Not there yet</h3>
+          <p className="body-font text-sm mt-2 max-w-md mx-auto" style={{ color: '#5C4F3D' }}>
+            This page will come alive once the trip starts. It'll show today's city, lodging, planned activities, and any meetups happening today.
+          </p>
+          <p className="body-font text-xs mt-4" style={{ color: '#7A6B58' }}>
+            In the meantime, jump to <strong>Calendar</strong> to see the full plan or <strong>Shared Itinerary</strong> to add days.
+          </p>
+        </div>
+      )}
+
+      {isPostTrip && (
+        <div className="card card-elevated rounded-2xl p-6 text-center">
+          <Sparkles size={32} style={{ color: '#C8553D' }} className="mx-auto mb-3" />
+          <h3 className="display-font text-2xl" style={{ color: '#1F3A3D' }}>Trip complete</h3>
+          <p className="body-font text-sm mt-2" style={{ color: '#5C4F3D' }}>
+            Hope it was wonderful. Photos and notes are still here whenever you want to look back.
+          </p>
+        </div>
+      )}
+
+      {isOnTrip && (
+        <>
+          {todayShared.length > 0 && (
+            <div>
+              <h3 className="display-font text-xl mb-2" style={{ color: '#C8553D' }}>Together today</h3>
+              {todayShared.map(d => (
+                <div key={d.id} className="card card-elevated rounded-2xl p-5 mb-2">
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className="display-font text-2xl" style={{ color: '#1F3A3D' }}>{d.city}</span>
+                    <span className="body-font text-xs px-2 py-0.5 rounded-full" style={{ background: '#1F3A3D15', color: '#1F3A3D' }}>{d.country}</span>
+                  </div>
+                  {d.activities && <p className="body-font text-sm mt-2" style={{ color: '#2A2018' }}>{d.activities}</p>}
+                  {d.lodging && (
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <p className="body-font text-xs flex items-center gap-1" style={{ color: '#5C4F3D' }}>
+                        <MapPin size={11} /> {d.lodging}
+                      </p>
+                      {d.address && (
+                        <button onClick={() => openInMaps(d.address)} className="map-link">
+                          <Navigation size={10} /> Open in Maps
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-1 mt-3 flex-wrap">
+                    {families.filter(f => d.families.includes(f.id)).map(f => (
+                      <span key={f.id} className="px-2 py-0.5 rounded-full body-font text-xs" style={{ background: `${f.color}20`, color: f.color }}>{f.label}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <h3 className="display-font text-xl mb-2" style={{ color: '#1F3A3D' }}>Each family today</h3>
+            <div className="space-y-2">
+              {familyTodays.map(({ family, day }) => (
+                <div key={family.id} className="card rounded-xl p-4" style={{ borderLeft: `4px solid ${family.color}` }}>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="display-font text-lg" style={{ color: family.color }}>{family.label}</span>
+                    {day ? (
+                      <>
+                        <span className="display-font text-base" style={{ color: '#1F3A3D' }}>{day.city}</span>
+                        <span className="body-font text-xs" style={{ color: '#7A6B58' }}>· {day.country}</span>
+                      </>
+                    ) : (
+                      <span className="body-font text-xs italic" style={{ color: '#7A6B58' }}>No plans recorded</span>
+                    )}
+                  </div>
+                  {day?.activities && <p className="body-font text-sm mt-1.5" style={{ color: '#2A2018' }}>{day.activities}</p>}
+                  {day?.lodging && (
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <p className="body-font text-xs flex items-center gap-1" style={{ color: '#5C4F3D' }}>
+                        <MapPin size={11} /> {day.lodging}
+                      </p>
+                      {day.address && (
+                        <button onClick={() => openInMaps(day.address)} className="map-link">
+                          <Navigation size={10} /> Maps
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {todayMeetups.length > 0 && (
+            <div>
+              <h3 className="display-font text-xl mb-2" style={{ color: '#1F3A3D' }}>Today's meetups</h3>
+              {todayMeetups.map(m => (
+                <div key={m.id} className="card rounded-xl p-4 mb-2">
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className="display-font text-lg" style={{ color: '#1F3A3D' }}>{m.title}</span>
+                    {m.time && <span className="body-font text-sm" style={{ color: '#C8553D' }}>{m.time}</span>}
+                  </div>
+                  {m.where && (
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="body-font text-xs flex items-center gap-1" style={{ color: '#5C4F3D' }}>
+                        <MapPin size={11} /> {m.where}
+                      </span>
+                      {m.address && (
+                        <button onClick={() => openInMaps(m.address)} className="map-link">
+                          <Navigation size={10} /> Maps
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {m.notes && <p className="body-font text-sm mt-2" style={{ color: '#2A2018' }}>{m.notes}</p>}
+                  <div className="flex gap-1 mt-2 flex-wrap">
+                    {families.filter(f => m.families.includes(f.id)).map(f => (
+                      <span key={f.id} className="px-2 py-0.5 rounded-full body-font text-xs" style={{ background: `${f.color}15`, color: f.color, border: `1px solid ${f.color}40` }}>{f.label}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {todayShared.length === 0 && todayMeetups.length === 0 && familyTodays.every(ft => !ft.day) && (
+            <div className="card rounded-2xl p-8 text-center body-font text-sm" style={{ color: '#7A6B58' }}>
+              Nothing recorded for today yet. Add days to the itineraries to populate this view.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============ CALENDAR ============
 function CalendarTab() {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
   const sharedDays = useStoreKey('itinerary-shared', []);
 
-  // Pull each family's itinerary
   const familyDaysMap = {};
   families.forEach(f => {
     familyDaysMap[f.id] = dataStore[`itinerary-${f.id}`] || [];
   });
 
-  // Build a map: dateISO -> { familyId -> { city, country, isShared } }
   const calendarMap = {};
 
   families.forEach(f => {
@@ -480,7 +697,6 @@ function CalendarTab() {
     });
   });
 
-  // Build the November 2026 calendar (30 days)
   const monthDates = [];
   for (let i = 1; i <= 30; i++) {
     const dateStr = `2026-11-${String(i).padStart(2, '0')}`;
@@ -493,7 +709,6 @@ function CalendarTab() {
 
       <div className="card card-elevated rounded-2xl p-4 overflow-x-auto">
         <div className="min-w-[700px]">
-          {/* Header row with days */}
           <div className="grid gap-px mb-2" style={{ gridTemplateColumns: `120px repeat(30, minmax(28px, 1fr))` }}>
             <div className="body-font text-xs uppercase tracking-wider" style={{ color: '#7A6B58' }}>Family</div>
             {monthDates.map(d => {
@@ -510,7 +725,6 @@ function CalendarTab() {
             })}
           </div>
 
-          {/* Family rows */}
           {families.map(f => (
             <div key={f.id} className="grid gap-px py-2 items-center" style={{ gridTemplateColumns: `120px repeat(30, minmax(28px, 1fr))` }}>
               <div className="flex items-center gap-2 body-font text-sm">
@@ -542,7 +756,6 @@ function CalendarTab() {
         </div>
       </div>
 
-      {/* Legend */}
       <div className="card rounded-xl p-4">
         <div className="body-font text-xs uppercase tracking-wider mb-2" style={{ color: '#7A6B58' }}>How to read this</div>
         <ul className="body-font text-xs space-y-1.5" style={{ color: '#2A2018' }}>
@@ -559,7 +772,7 @@ function CalendarTab() {
             <span>Empty = no plan recorded for that family that day</span>
           </li>
           <li className="pt-1" style={{ color: '#5C4F3D' }}>
-            Hover any cell for the city name and whether it's a shared or family-only day. Add check-in / check-out dates to your itinerary days for the bands to span multiple days automatically.
+            Hover any cell for the city name. Add check-in / check-out dates to itinerary days for bands to span multiple days.
           </li>
         </ul>
       </div>
@@ -567,13 +780,13 @@ function CalendarTab() {
   );
 }
 
-// ============ WEATHER (NEW) ============
+// ============ WEATHER ============
 function WeatherTab() {
   const cities = Object.keys(WEATHER_DATA);
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="November Weather" subtitle="Historical averages for November. Real forecasts available about a week out from your travel dates." />
+      <SectionHeader title="November Weather" subtitle="Historical averages for November. Real forecasts available about a week out." />
 
       <div className="card card-elevated rounded-2xl p-4" style={{ background: '#1F3A3D08', border: '1px solid #1F3A3D20' }}>
         <div className="flex items-start gap-3">
@@ -876,7 +1089,7 @@ function FlightsTab({ familyId }) {
             <input type="text" placeholder="To (CMN)" value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input type="date" placeholder="Date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
+            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
             <input type="text" placeholder="Depart" value={form.departTime} onChange={e => setForm({ ...form, departTime: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
             <input type="text" placeholder="Arrive" value={form.arriveTime} onChange={e => setForm({ ...form, arriveTime: e.target.value })} className="px-3 py-2 rounded-lg text-sm" />
           </div>
@@ -921,18 +1134,21 @@ function FlightsTab({ familyId }) {
   );
 }
 
-// ============ SHARED EXPENSES ============
+// ============ SHARED EXPENSES (with settlement) ============
 function SharedExpensesTab() {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
   const expenses = useStoreKey('expenses-shared', []);
+  const fxRates = useStoreKey('fx-rates', { mad: 9.23, eur: 0.85 });
   const [showForm, setShowForm] = useState(false);
+  const [showSettled, setShowSettled] = useState(false);
+  const [showConverter, setShowConverter] = useState(false);
   const [form, setForm] = useState({ description: '', amount: '', paidBy: families[0]?.id || '', splitAmong: families.map(f => f.id), date: '' });
 
   const persist = (next) => updateKey('expenses-shared', next);
 
   const addExpense = () => {
     if (!form.description || !form.amount || form.splitAmong.length === 0) return;
-    persist([...expenses, { ...form, id: Date.now().toString(), amount: parseFloat(form.amount) }]);
+    persist([...expenses, { ...form, id: Date.now().toString(), amount: parseFloat(form.amount), settledBy: {} }]);
     setForm({ description: '', amount: '', paidBy: families[0]?.id || '', splitAmong: families.map(f => f.id), date: '' });
     setShowForm(false);
   };
@@ -940,6 +1156,20 @@ function SharedExpensesTab() {
   const removeExpense = (id) => persist(expenses.filter(e => e.id !== id));
   const toggleSplit = (famId) => setForm(f => ({ ...f, splitAmong: f.splitAmong.includes(famId) ? f.splitAmong.filter(x => x !== famId) : [...f.splitAmong, famId] }));
 
+  const markPaid = (expenseId, famId) => {
+    persist(expenses.map(e => {
+      if (e.id !== expenseId) return e;
+      const settledBy = { ...(e.settledBy || {}) };
+      if (settledBy[famId]) {
+        delete settledBy[famId];
+      } else {
+        settledBy[famId] = new Date().toISOString();
+      }
+      return { ...e, settledBy };
+    }));
+  };
+
+  // Calculate balances using only UNSETTLED portions
   const balances = {};
   families.forEach(f => balances[f.id] = 0);
 
@@ -948,16 +1178,54 @@ function SharedExpensesTab() {
     const totalPeople = splitFamilies.reduce((sum, f) => sum + f.size, 0);
     if (totalPeople === 0) return;
     const perPerson = exp.amount / totalPeople;
-    if (balances[exp.paidBy] !== undefined) balances[exp.paidBy] += exp.amount;
-    splitFamilies.forEach(f => { balances[f.id] -= perPerson * f.size; });
+    const settledBy = exp.settledBy || {};
+
+    splitFamilies.forEach(f => {
+      // Skip the payer (they don't owe themselves)
+      if (f.id === exp.paidBy) return;
+      // Skip if this family already paid back
+      if (settledBy[f.id]) return;
+      const owed = perPerson * f.size;
+      if (balances[f.id] !== undefined) balances[f.id] -= owed;
+      if (balances[exp.paidBy] !== undefined) balances[exp.paidBy] += owed;
+    });
   });
 
   const settlements = calculateSettlements(balances);
 
+  // Split into active and settled expense lists
+  const expenseHasUnsettled = (e) => {
+    const settledBy = e.settledBy || {};
+    return e.splitAmong.some(famId => famId !== e.paidBy && !settledBy[famId]);
+  };
+
+  const activeExpenses = expenses.filter(expenseHasUnsettled);
+  const settledExpenses = expenses.filter(e => !expenseHasUnsettled(e));
+
   return (
     <div className="space-y-5">
-      <SectionHeader title="Shared Expenses" subtitle="Costs split across multiple families. Pick who's in on each one." />
+      <SectionHeader title="Shared Expenses" subtitle="Costs split across multiple families. Mark each family's share as paid when settled." />
 
+      {/* Currency converter */}
+      <div className="card rounded-2xl overflow-hidden">
+        <button onClick={() => setShowConverter(!showConverter)} className="w-full p-4 flex items-center justify-between text-left">
+          <div className="flex items-center gap-2">
+            <DollarSign size={16} style={{ color: '#1F3A3D' }} />
+            <span className="body-font text-sm font-medium" style={{ color: '#1F3A3D' }}>Currency converter</span>
+            <span className="body-font text-xs" style={{ color: '#7A6B58' }}>
+              $1 ≈ {fxRates.mad} MAD · €{fxRates.eur}
+            </span>
+          </div>
+          {showConverter ? <ChevronUp size={16} style={{ color: '#5C4F3D' }} /> : <ChevronDown size={16} style={{ color: '#5C4F3D' }} />}
+        </button>
+        {showConverter && (
+          <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: '#E0D2BC' }}>
+            <CurrencyConverter fxRates={fxRates} onUpdateRates={(rates) => updateKey('fx-rates', rates)} />
+          </div>
+        )}
+      </div>
+
+      {/* Balances summary */}
       <div className="card card-elevated rounded-2xl p-5">
         <h3 className="display-font text-xl mb-4" style={{ color: '#1F3A3D' }}>Where things stand</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -974,9 +1242,9 @@ function SharedExpensesTab() {
           })}
         </div>
 
-        {settlements.length > 0 && (
+        {settlements.length > 0 ? (
           <div className="pt-4 border-t" style={{ borderColor: '#E0D2BC' }}>
-            <div className="body-font text-xs uppercase tracking-wider mb-2" style={{ color: '#7A6B58' }}>To settle up</div>
+            <div className="body-font text-xs uppercase tracking-wider mb-2" style={{ color: '#7A6B58' }}>To settle up (unsettled portions only)</div>
             <div className="space-y-1.5">
               {settlements.map((s, i) => {
                 const from = families.find(f => f.id === s.from);
@@ -993,9 +1261,14 @@ function SharedExpensesTab() {
               })}
             </div>
           </div>
+        ) : expenses.length > 0 && (
+          <div className="pt-4 border-t body-font text-sm text-center" style={{ borderColor: '#E0D2BC', color: '#6B7F5C' }}>
+            ✓ All settled up
+          </div>
         )}
       </div>
 
+      {/* Add new expense */}
       {!showForm ? (
         <button onClick={() => setShowForm(true)} className="btn-primary w-full py-3 rounded-xl body-font text-sm flex items-center justify-center gap-2">
           <Plus size={16} /> Log a shared expense
@@ -1035,36 +1308,155 @@ function SharedExpensesTab() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {expenses.length === 0 && <div className="text-center py-12 body-font text-sm" style={{ color: '#7A6B58' }}>No shared expenses yet.</div>}
-        {expenses.slice().reverse().map(exp => {
-          const paidBy = families.find(f => f.id === exp.paidBy);
-          const splitFams = families.filter(f => exp.splitAmong.includes(f.id));
-          return (
-            <div key={exp.id} className="card rounded-xl p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{exp.description}</div>
-                  <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
-                    {exp.date && <span>{formatDate(exp.date) || exp.date} · </span>}
-                    <span style={{ color: paidBy?.color || '#5C4F3D' }}>{paidBy?.label || 'Unknown'}</span> paid
-                  </div>
-                  <div className="flex gap-1 mt-1.5 flex-wrap items-center">
-                    <span className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>Between:</span>
-                    {splitFams.map(f => (
-                      <span key={f.id} className="px-2 py-0.5 rounded-full body-font text-[10px]" style={{ background: `${f.color}15`, color: f.color, border: `1px solid ${f.color}40` }}>
-                        {f.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="display-font text-xl whitespace-nowrap" style={{ color: '#1F3A3D' }}>${exp.amount.toFixed(2)}</div>
-                <button onClick={() => removeExpense(exp.id)} className="p-1.5 rounded-lg" style={{ color: '#C8553D' }}><Trash2 size={14} /></button>
-              </div>
-            </div>
-          );
-        })}
+      {/* Active expenses */}
+      <div>
+        <h3 className="display-font text-xl mb-2" style={{ color: '#1F3A3D' }}>Active expenses</h3>
+        <div className="space-y-2">
+          {activeExpenses.length === 0 && <div className="card rounded-xl p-6 text-center body-font text-sm" style={{ color: '#7A6B58' }}>No active expenses.</div>}
+          {activeExpenses.slice().reverse().map(exp => (
+            <ExpenseCard key={exp.id} exp={exp} families={families} onRemove={() => removeExpense(exp.id)} onMarkPaid={(famId) => markPaid(exp.id, famId)} />
+          ))}
+        </div>
       </div>
+
+      {/* Settled expenses (collapsible) */}
+      {settledExpenses.length > 0 && (
+        <div>
+          <button onClick={() => setShowSettled(!showSettled)} className="flex items-center gap-2 body-font text-sm" style={{ color: '#5C4F3D' }}>
+            {showSettled ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {showSettled ? 'Hide' : 'Show'} settled history ({settledExpenses.length})
+          </button>
+          {showSettled && (
+            <div className="space-y-2 mt-3">
+              {settledExpenses.slice().reverse().map(exp => (
+                <ExpenseCard key={exp.id} exp={exp} families={families} onRemove={() => removeExpense(exp.id)} onMarkPaid={(famId) => markPaid(exp.id, famId)} settled />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpenseCard({ exp, families, onRemove, onMarkPaid, settled }) {
+  const paidBy = families.find(f => f.id === exp.paidBy);
+  const splitFamilies = families.filter(f => exp.splitAmong.includes(f.id));
+  const totalPeople = splitFamilies.reduce((sum, f) => sum + f.size, 0);
+  const perPerson = totalPeople > 0 ? exp.amount / totalPeople : 0;
+  const owingFamilies = splitFamilies.filter(f => f.id !== exp.paidBy);
+  const settledBy = exp.settledBy || {};
+
+  return (
+    <div className="card rounded-xl p-4" style={{ opacity: settled ? 0.6 : 1 }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{exp.description}</div>
+          <div className="body-font text-xs mt-1" style={{ color: '#5C4F3D' }}>
+            {exp.date && <span>{formatDate(exp.date) || exp.date} · </span>}
+            <span style={{ color: paidBy?.color || '#5C4F3D' }}>{paidBy?.label || 'Unknown'}</span> paid
+          </div>
+        </div>
+        <div className="display-font text-xl whitespace-nowrap" style={{ color: '#1F3A3D' }}>${exp.amount.toFixed(2)}</div>
+        <button onClick={onRemove} className="p-1.5 rounded-lg" style={{ color: '#C8553D' }}><Trash2 size={14} /></button>
+      </div>
+
+      {owingFamilies.length > 0 && (
+        <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: '#E0D2BC' }}>
+          {owingFamilies.map(f => {
+            const owed = perPerson * f.size;
+            const isPaid = !!settledBy[f.id];
+            return (
+              <div key={f.id} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="body-font text-xs px-2 py-0.5 rounded-full" style={{ background: `${f.color}15`, color: f.color, border: `1px solid ${f.color}40` }}>
+                    {f.label}
+                  </span>
+                  <span className="body-font text-sm" style={{ color: '#2A2018' }}>
+                    owes <strong>${owed.toFixed(2)}</strong>
+                  </span>
+                  {isPaid && settledBy[f.id] && (
+                    <span className="body-font text-xs" style={{ color: '#6B7F5C' }}>
+                      paid {new Date(settledBy[f.id]).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => onMarkPaid(f.id)}
+                  className="px-2 py-1 rounded-full body-font text-xs flex items-center gap-1 transition-all"
+                  style={{
+                    background: isPaid ? '#6B7F5C' : 'transparent',
+                    color: isPaid ? '#FBF6EC' : '#6B7F5C',
+                    border: `1px solid #6B7F5C`,
+                  }}
+                >
+                  {isPaid ? <><Check size={11} /> Paid</> : 'Mark paid'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CurrencyConverter({ fxRates, onUpdateRates }) {
+  const [usd, setUsd] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draftRates, setDraftRates] = useState({ mad: fxRates.mad, eur: fxRates.eur });
+
+  const usdNum = parseFloat(usd) || 0;
+  const mad = (usdNum * fxRates.mad).toFixed(2);
+  const eur = (usdNum * fxRates.eur).toFixed(2);
+
+  const saveRates = () => {
+    onUpdateRates({ mad: parseFloat(draftRates.mad) || 9.23, eur: parseFloat(draftRates.eur) || 0.85 });
+    setEditing(false);
+  };
+
+  return (
+    <div className="space-y-3 pt-3">
+      <div className="grid grid-cols-3 gap-2 items-end">
+        <div>
+          <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>USD</label>
+          <input type="number" placeholder="0" value={usd} onChange={e => setUsd(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" />
+        </div>
+        <div>
+          <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>MAD</label>
+          <div className="px-3 py-2 rounded-lg text-sm card body-font" style={{ background: '#F5EDE0' }}>{mad}</div>
+        </div>
+        <div>
+          <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>EUR</label>
+          <div className="px-3 py-2 rounded-lg text-sm card body-font" style={{ background: '#F5EDE0' }}>€{eur}</div>
+        </div>
+      </div>
+
+      {!editing ? (
+        <button onClick={() => setEditing(true)} className="body-font text-xs underline" style={{ color: '#5C4F3D' }}>
+          Update rates
+        </button>
+      ) : (
+        <div className="space-y-2 p-3 rounded-lg" style={{ background: '#F5EDE0' }}>
+          <p className="body-font text-xs" style={{ color: '#5C4F3D' }}>
+            Check today's mid-market rate at xe.com or wise.com, then update here.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>1 USD = ___ MAD</label>
+              <input type="number" step="0.01" value={draftRates.mad} onChange={e => setDraftRates({ ...draftRates, mad: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="body-font text-[10px] uppercase tracking-wider" style={{ color: '#7A6B58' }}>1 USD = ___ EUR</label>
+              <input type="number" step="0.01" value={draftRates.eur} onChange={e => setDraftRates({ ...draftRates, eur: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setEditing(false)} className="body-font text-xs" style={{ color: '#5C4F3D' }}>Cancel</button>
+            <button onClick={saveRates} className="btn-primary px-3 py-1 rounded-lg body-font text-xs">Save rates</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1671,23 +2063,26 @@ function getDefaultFamilyPacking() {
   ];
 }
 
-// ============ NOTES ============
+// ============ NOTES (with type field) ============
 function NotesTab({ scope, familyId }) {
   const families = useStoreKey('families', DEFAULT_FAMILIES);
   const family = familyId ? families.find(f => f.id === familyId) : null;
   const storageKey = scope === 'family' ? `notes-${familyId}` : 'notes-shared';
   const notes = useStoreKey(storageKey, []);
-  const [draft, setDraft] = useState({ title: '', body: '', author: families[0]?.id || '' });
+  const [draft, setDraft] = useState({ title: '', body: '', author: families[0]?.id || '', type: 'general' });
+  const [filterType, setFilterType] = useState('all');
 
   const persist = (next) => updateKey(storageKey, next);
 
   const add = () => {
     if (!draft.title && !draft.body) return;
     persist([{ ...draft, id: Date.now().toString(), createdAt: new Date().toISOString() }, ...notes]);
-    setDraft({ title: '', body: '', author: draft.author });
+    setDraft({ title: '', body: '', author: draft.author, type: draft.type });
   };
 
   const remove = (id) => persist(notes.filter(n => n.id !== id));
+
+  const filteredNotes = filterType === 'all' ? notes : notes.filter(n => (n.type || 'general') === filterType);
 
   return (
     <div className="space-y-5">
@@ -1697,9 +2092,70 @@ function NotesTab({ scope, familyId }) {
         color={family?.color}
       />
 
+      {/* Type filter chips */}
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => setFilterType('all')}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full body-font text-xs transition-all"
+          style={{
+            background: filterType === 'all' ? '#1F3A3D' : 'transparent',
+            color: filterType === 'all' ? '#F5EDE0' : '#1F3A3D',
+            border: '1px solid #1F3A3D',
+          }}
+        >
+          All ({notes.length})
+        </button>
+        {NOTE_TYPES.map(type => {
+          const Icon = type.icon;
+          const count = notes.filter(n => (n.type || 'general') === type.id).length;
+          if (count === 0) return null;
+          const isActive = filterType === type.id;
+          return (
+            <button
+              key={type.id}
+              onClick={() => setFilterType(type.id)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-full body-font text-xs transition-all"
+              style={{
+                background: isActive ? type.color : 'transparent',
+                color: isActive ? '#FBF6EC' : type.color,
+                border: `1px solid ${type.color}`,
+              }}
+            >
+              <Icon size={11} />
+              {type.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* New note form */}
       <div className="card card-elevated rounded-2xl p-5 space-y-2">
-        <input type="text" placeholder="Title" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
-        <textarea placeholder="Write your note..." value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm resize-none" rows={4} />
+        <div>
+          <div className="body-font text-xs uppercase tracking-wider mb-1.5" style={{ color: '#7A6B58' }}>Type</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {NOTE_TYPES.map(type => {
+              const Icon = type.icon;
+              const isActive = draft.type === type.id;
+              return (
+                <button
+                  key={type.id}
+                  onClick={() => setDraft({ ...draft, type: type.id })}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full body-font text-xs transition-all"
+                  style={{
+                    background: isActive ? type.color : 'transparent',
+                    color: isActive ? '#FBF6EC' : type.color,
+                    border: `1px solid ${type.color}`,
+                  }}
+                >
+                  <Icon size={10} />
+                  {type.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <input type="text" placeholder={getNotePlaceholder(draft.type, 'title')} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm" />
+        <textarea placeholder={getNotePlaceholder(draft.type, 'body')} value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm resize-none" rows={4} />
         <div className="flex justify-between items-center">
           {scope === 'shared' ? (
             <select value={draft.author} onChange={e => setDraft({ ...draft, author: e.target.value })} className="px-3 py-1.5 rounded-lg text-xs">
@@ -1711,13 +2167,21 @@ function NotesTab({ scope, familyId }) {
       </div>
 
       <div className="space-y-2">
-        {notes.length === 0 && <div className="text-center py-12 body-font text-sm" style={{ color: '#7A6B58' }}>No notes yet.</div>}
-        {notes.map(n => {
+        {filteredNotes.length === 0 && <div className="text-center py-12 body-font text-sm" style={{ color: '#7A6B58' }}>No notes yet{filterType !== 'all' ? ' of this type' : ''}.</div>}
+        {filteredNotes.map(n => {
           const author = families.find(f => f.id === n.author);
+          const noteType = NOTE_TYPES.find(t => t.id === (n.type || 'general')) || NOTE_TYPES[0];
+          const TypeIcon = noteType.icon;
           return (
             <div key={n.id} className="card rounded-xl p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full body-font text-[10px] uppercase tracking-wider" style={{ background: `${noteType.color}15`, color: noteType.color, border: `1px solid ${noteType.color}40` }}>
+                      <TypeIcon size={9} />
+                      {noteType.label}
+                    </span>
+                  </div>
                   {n.title && <div className="display-font text-lg leading-tight" style={{ color: '#1F3A3D' }}>{n.title}</div>}
                   <div className="body-font text-xs mt-0.5" style={{ color: author?.color || '#5C4F3D' }}>
                     {scope === 'shared' && author ? `${author.label} · ` : ''}{new Date(n.createdAt).toLocaleDateString()}
@@ -1732,6 +2196,18 @@ function NotesTab({ scope, familyId }) {
       </div>
     </div>
   );
+}
+
+function getNotePlaceholder(type, field) {
+  const placeholders = {
+    general: { title: 'Title', body: 'Write your note...' },
+    document: { title: 'e.g. Robert\'s passport scan', body: 'Paste link to scan or describe location of document...' },
+    reservation: { title: 'e.g. Riad Yasmine, Marrakech', body: 'Confirmation #, dates, contact info...' },
+    contact: { title: 'e.g. US Embassy Rabat', body: 'Phone, address, email, hours...' },
+    logistics: { title: 'e.g. ONCF train Casa to Fes', body: 'Times, prices, booking link...' },
+    tip: { title: 'e.g. Best ATMs in Marrakech', body: 'What you learned...' },
+  };
+  return placeholders[type]?.[field] || placeholders.general[field];
 }
 
 function SectionHeader({ title, subtitle, color }) {
